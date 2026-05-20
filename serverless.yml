@@ -3,7 +3,7 @@ service: remotion-campaign-app
 provider:
   name: aws
   runtime: nodejs20.x
-  region: us-east-1
+  region: ${env:REMOTION_AWS_REGION}
   memorySize: 2048 # Vídeo exige memória
   timeout: 60 # Timeout estendido para renderização
   environment:
