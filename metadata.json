@@ -1,0 +1,8 @@
+{
+  "name": "Gerador de Vídeo - Namorados",
+  "description": "Ferramenta para consultores inserirem seus contatos no final de um vídeo de campanha de Dia dos Namorados e baixarem o MP4 pronto.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,19 @@
+service: remotion-campaign-app
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  memorySize: 2048 # Vídeo exige memória
+  timeout: 60 # Timeout estendido para renderização
+  environment:
+    NODE_ENV: production
+
+functions:
+  api:
+    handler: dist/lambda.handler # Gerado pelo build no package.json
+    events:
+      - httpApi: '*'
+
+# plugins:
+#   - serverless-offline # Para testar se quiser
