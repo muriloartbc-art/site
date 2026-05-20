@@ -16,6 +16,7 @@
     "@remotion/bundler": "^4.0.462",
     "@remotion/cli": "^4.0.462",
     "@remotion/lambda": "^4.0.463",
+    "@remotion/lambda-client": "^4.0.463",
     "@remotion/media-utils": "^4.0.462",
     "@remotion/player": "^4.0.462",
     "@remotion/renderer": "^4.0.462",

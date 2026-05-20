@@ -21,7 +21,7 @@ export default function App() {
   const [selectedTemplateIndex, setSelectedTemplateIndex] = useState(0);
 
   const fetchTemplates = useCallback(() => {
-    fetch("/api/templates")
+    fetch("/templates.json")
       .then((res) => res.json())
       .then((data) => {
         if (data.templates && data.templates.length > 0) {

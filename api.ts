@@ -5,7 +5,7 @@ import fs from "fs";
 import { createRequire } from "node:module";
 
 const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
-const { renderMediaOnLambda, getRenderProgress } = nodeRequire("@remotion/lambda/client") as typeof import("@remotion/lambda/client");
+const { renderMediaOnLambda, getRenderProgress } = nodeRequire("@remotion/lambda-client") as typeof import("@remotion/lambda-client");
 
 if (!process.env.AWS_ACCESS_KEY_ID && process.env.REMOTION_AWS_ACCESS_KEY_ID) {
   process.env.AWS_ACCESS_KEY_ID = process.env.REMOTION_AWS_ACCESS_KEY_ID;

@@ -8,8 +8,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@remotion/lambda", "@remotion/lambda-client"]
-  included_files = ["public/templates/**", "dist/templates/**"]
+  external_node_modules = ["@remotion/lambda-client"]
 
 [[redirects]]
   from = "/api/*"
