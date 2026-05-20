@@ -83,7 +83,7 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
     const overlayElapsed = duration ? video.currentTime - overlayStart : OVERLAY_DURATION_SECONDS;
     const overlayProgress = clamp(overlayElapsed / OVERLAY_ANIMATION_SECONDS, 0, 1);
     const overlayOpacity = duration && video.currentTime < overlayStart ? 0 : easeOutCubic(overlayProgress);
-    const overlayOffsetY = (1 - overlayOpacity) * height * 0.045;
+    const overlayOffsetY = (1 - overlayOpacity) * height * 0.035;
 
     if (overlayOpacity <= 0) return;
 
@@ -99,9 +99,9 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
     ctx.fillRect(0, 0, width, height);
 
     const centerX = width / 2;
-    const badgeWidth = Math.min(width * 0.58, 390);
-    const badgeHeight = Math.max(44, height * 0.04);
-    const badgeY = height * 0.68;
+    const badgeWidth = Math.min(width * 0.49, 350);
+    const badgeHeight = Math.max(36, height * 0.034);
+    const badgeY = height * 0.735;
 
     ctx.fillStyle = "#e11d48";
     ctx.fillRect(centerX - badgeWidth / 2, badgeY, badgeWidth, badgeHeight);
@@ -109,20 +109,20 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `300 ${Math.max(16, Math.floor(width * 0.026))}px Montserrat, Arial, sans-serif`;
-    ctx.letterSpacing = "4px";
+    ctx.font = `300 ${Math.max(13, Math.floor(width * 0.021))}px Montserrat, Arial, sans-serif`;
+    ctx.letterSpacing = "3px";
     ctx.fillText((headline.trim() || "Fale comigo").toUpperCase(), centerX, badgeY + badgeHeight / 2);
 
     const nameText = (name.trim() || "SEU NOME").toUpperCase();
     const phoneText = phone.trim() || "(XX) 99999-9999";
 
-    ctx.letterSpacing = "2px";
-    ctx.font = `300 ${Math.max(20, Math.floor(width * 0.036))}px Montserrat, Arial, sans-serif`;
-    ctx.fillText(nameText, centerX, badgeY + badgeHeight + height * 0.055);
+    ctx.letterSpacing = "1px";
+    ctx.font = `300 ${Math.max(16, Math.floor(width * 0.026))}px Montserrat, Arial, sans-serif`;
+    ctx.fillText(nameText, centerX, badgeY + badgeHeight + height * 0.045);
 
     ctx.letterSpacing = "0px";
-    ctx.font = `700 ${Math.max(28, Math.floor(width * 0.057))}px Montserrat, Arial, sans-serif`;
-    ctx.fillText(phoneText, centerX, badgeY + badgeHeight + height * 0.112);
+    ctx.font = `700 ${Math.max(24, Math.floor(width * 0.046))}px Montserrat, Arial, sans-serif`;
+    ctx.fillText(phoneText, centerX, badgeY + badgeHeight + height * 0.094);
     ctx.restore();
   }, [headline, name, phone]);
 
