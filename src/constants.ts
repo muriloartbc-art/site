@@ -1,0 +1,1 @@
+export const BANNER_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="; // Placeholder 1x1 image. Replace this base64 string with your original large base64 image string!
