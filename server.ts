@@ -24,8 +24,12 @@ export const configureApp = async () => {
 
   app.get("/api/templates", (req, res) => {
     try {
-      const templatesDir = path.join(process.cwd(), "public", "templates");
-      if (!fs.existsSync(templatesDir)) {
+      const templatesDir = [
+        path.join(process.cwd(), "dist", "templates"),
+        path.join(process.cwd(), "public", "templates"),
+      ].find((dir) => fs.existsSync(dir));
+
+      if (!templatesDir) {
         return res.json({ templates: [] });
       }
       const files = fs.readdirSync(templatesDir);
@@ -48,7 +52,21 @@ export const configureApp = async () => {
   app.get("/api/render/progress", async (req, res) => {
     const id = req.query.id as string;
     if (!id) return res.status(400).json({ error: "No id provided" });
-    const data = awsRenderMap.get(id);
+    const lambdaRenderId = req.query.renderId as string | undefined;
+    const queryBucketName = req.query.bucketName as string | undefined;
+    const data = awsRenderMap.get(id) ?? (
+      lambdaRenderId && queryBucketName
+        ? {
+            renderId: lambdaRenderId,
+            bucketName: queryBucketName,
+            percent: 0.01,
+            error: null,
+            complete: false,
+            lastUpdatedAt: Date.now(),
+          }
+        : null
+    );
+
     if (!data) return res.status(404).json({ error: "Not found" });
     
     if (data.error) return res.json({ error: data.error });
@@ -88,9 +106,9 @@ export const configureApp = async () => {
 
   app.post("/api/render/start", async (req, res) => {
     try {
-      const { name, phone, renderId, templateFilename } = req.body;
+      const { name, phone, renderId: clientRenderId, templateFilename } = req.body;
       
-      if (!name || !phone || !renderId) {
+      if (!name || !phone || !clientRenderId) {
         return res.status(400).json({ error: "Name, phone, and renderId are required" });
       }
       
@@ -98,53 +116,42 @@ export const configureApp = async () => {
         return res.status(500).json({ error: "AWS Lambda config missing in .env (REMOTION_AWS_REGION, REMOTION_FUNCTION_NAME, REMOTION_SERVE_URL)" });
       }
 
-      awsRenderMap.set(renderId, { renderId: "", bucketName: "", percent: 0.01, error: null, complete: false, lastUpdatedAt: Date.now() });
-      console.log("Starting remote lambda render for", name, phone, "id:", renderId);
-      
-      // Respond immediately
-      res.json({ success: true, renderId });
+      awsRenderMap.set(clientRenderId, { renderId: "", bucketName: "", percent: 0.01, error: null, complete: false, lastUpdatedAt: Date.now() });
+      console.log("Starting remote lambda render for", name, phone, "id:", clientRenderId);
 
-      // Continue in background
-      (async () => {
-        try {
-          const lambdaRender = await renderMediaOnLambda({
-            region: process.env.REMOTION_AWS_REGION as any,
-            functionName: process.env.REMOTION_FUNCTION_NAME!,
-            serveUrl: process.env.REMOTION_SERVE_URL!,
-            composition: "CampaignVideo",
-            inputProps: { name, phone, templateFilename },
-            codec: "h264",
-            framesPerLambda,
-            downloadBehavior: {
-              type: "download",
-              fileName: `Campanha_Namorados_${name.replace(/\s+/g, "_")}.mp4`
-            }
-          });
-          
-          awsRenderMap.set(renderId, { 
-             renderId: lambdaRender.renderId, 
-             bucketName: lambdaRender.bucketName,
-             percent: 0.05,
-             error: null,
-             complete: false,
-             lastUpdatedAt: Date.now()
-          });
-
-          // Cleanup map memory after 1 hour
-          setTimeout(() => {
-            awsRenderMap.delete(renderId);
-          }, 60 * 60 * 1000); 
-
-        } catch (bgError) {
-          console.error("Background lambda render failed:", bgError);
-          const current = awsRenderMap.get(renderId);
-          if (current) {
-            current.error = String(bgError);
-            current.percent = 0;
-            awsRenderMap.set(renderId, current);
-          }
+      const lambdaRender = await renderMediaOnLambda({
+        region: process.env.REMOTION_AWS_REGION as any,
+        functionName: process.env.REMOTION_FUNCTION_NAME!,
+        serveUrl: process.env.REMOTION_SERVE_URL!,
+        composition: "CampaignVideo",
+        inputProps: { name, phone, templateFilename },
+        codec: "h264",
+        framesPerLambda,
+        downloadBehavior: {
+          type: "download",
+          fileName: `Campanha_Namorados_${name.replace(/\s+/g, "_")}.mp4`
         }
-      })();
+      });
+
+      awsRenderMap.set(clientRenderId, {
+         renderId: lambdaRender.renderId,
+         bucketName: lambdaRender.bucketName,
+         percent: 0.05,
+         error: null,
+         complete: false,
+         lastUpdatedAt: Date.now()
+      });
+
+      setTimeout(() => {
+        awsRenderMap.delete(clientRenderId);
+      }, 60 * 60 * 1000);
+
+      res.json({
+        success: true,
+        renderId: clientRenderId,
+        awsRenderId: lambdaRender.renderId,
+        bucketName: lambdaRender.bucketName,
+      });
 
     } catch (error) {
       console.error("Render start failed:", error);

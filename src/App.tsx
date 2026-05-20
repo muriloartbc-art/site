@@ -93,13 +93,24 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Falha ao iniciar renderização");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.details || errorData?.error || "Falha ao iniciar renderização");
       }
+
+      const startData = await response.json();
       
       // Start progress polling
       const progressInterval = setInterval(async () => {
         try {
-          const res = await fetch(`/api/render/progress?id=${renderId}`);
+          const progressParams = new URLSearchParams({ id: renderId });
+          if (startData.awsRenderId) {
+            progressParams.set("renderId", startData.awsRenderId);
+          }
+          if (startData.bucketName) {
+            progressParams.set("bucketName", startData.bucketName);
+          }
+
+          const res = await fetch(`/api/render/progress?${progressParams.toString()}`);
           if (res.ok) {
             const data = await res.json();
             if (data.error) {
@@ -144,7 +155,7 @@ export default function App() {
                 // Trigger download safely
                 const a = document.createElement("a");
                 a.style.display = "none";
-                a.href = `/api/render/download?id=${renderId}`;
+                a.href = data.outUrl || `/api/render/download?id=${renderId}`;
                 a.download = `Campanha_Namorados_${name.replace(/\s+/g, "_")}.mp4`;
                 document.body.appendChild(a);
                 a.click();
