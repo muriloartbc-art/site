@@ -853,6 +853,22 @@ html, body, #root {
     0 60px 120px rgba(0,0,0,0.08);
 }
 
+.video-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.video-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .video-warning {
   position: absolute;
   top: 0;

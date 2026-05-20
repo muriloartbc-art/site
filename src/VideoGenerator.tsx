@@ -1,61 +1,185 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Player } from "@remotion/player";
-import { getVideoMetadata } from "@remotion/media-utils";
-import { staticFile } from "remotion";
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2, Phone, User } from "lucide-react";
-import { CampaignVideo } from "./remotion/CampaignVideo";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, Loader2, Phone, Type, User } from "lucide-react";
 
 interface VideoGeneratorProps {
   onBack: () => void;
 }
 
+type CaptureVideo = HTMLVideoElement & {
+  captureStream?: () => MediaStream;
+  mozCaptureStream?: () => MediaStream;
+};
+
+const FPS = 30;
+const OVERLAY_DURATION_SECONDS = 5;
+const OVERLAY_ANIMATION_SECONDS = 0.5;
+
+const pickMp4MimeType = () => {
+  const options = [
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4;codecs="avc1.424028,mp4a.40.2"',
+    "video/mp4;codecs=h264,aac",
+    "video/mp4",
+  ];
+
+  return options.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+};
+
+const pickWebmMimeType = () => {
+  const options = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm;codecs=h264,opus",
+    "video/webm",
+  ];
+
+  return options.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const easeOutCubic = (value: number) => 1 - Math.pow(1 - value, 3);
+
 export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const animationRef = useRef<number | null>(null);
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [renderProgress, setRenderProgress] = useState<number | null>(null);
-  const [videoMeta, setVideoMeta] = useState<any>(null);
-  const [videoError, setVideoError] = useState<string | null>(null);
+  const [headline, setHeadline] = useState("Fale comigo");
   const [templates, setTemplates] = useState<string[]>([]);
   const [selectedTemplateIndex, setSelectedTemplateIndex] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [renderProgress, setRenderProgress] = useState<number | null>(null);
+  const [exportFormat, setExportFormat] = useState<"mp4" | "webm" | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
-  const fetchTemplates = useCallback(() => {
+  const currentTemplate = templates[selectedTemplateIndex] || "composicao-2.mp4";
+  const currentVideoUrl = `/templates/${encodeURIComponent(currentTemplate)}`;
+
+  const drawFrame = useCallback(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video || !video.videoWidth || !video.videoHeight) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const scale = Math.max(width / video.videoWidth, height / video.videoHeight);
+    const drawWidth = video.videoWidth * scale;
+    const drawHeight = video.videoHeight * scale;
+    const drawX = (width - drawWidth) / 2;
+    const drawY = (height - drawHeight) / 2;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
+
+    const duration = video.duration || 0;
+    const overlayStart = Math.max(0, duration - OVERLAY_DURATION_SECONDS);
+    const overlayElapsed = duration ? video.currentTime - overlayStart : OVERLAY_DURATION_SECONDS;
+    const overlayProgress = clamp(overlayElapsed / OVERLAY_ANIMATION_SECONDS, 0, 1);
+    const overlayOpacity = duration && video.currentTime < overlayStart ? 0 : easeOutCubic(overlayProgress);
+    const overlayOffsetY = (1 - overlayOpacity) * height * 0.045;
+
+    if (overlayOpacity <= 0) return;
+
+    ctx.save();
+    ctx.globalAlpha = overlayOpacity;
+    ctx.translate(0, overlayOffsetY);
+
+    const gradient = ctx.createLinearGradient(0, height * 0.46, 0, height);
+    gradient.addColorStop(0, "rgba(0,0,0,0)");
+    gradient.addColorStop(0.52, "rgba(0,0,0,0.22)");
+    gradient.addColorStop(1, "rgba(0,0,0,0.78)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    const centerX = width / 2;
+    const badgeWidth = Math.min(width * 0.58, 390);
+    const badgeHeight = Math.max(44, height * 0.04);
+    const badgeY = height * 0.68;
+
+    ctx.fillStyle = "#e11d48";
+    ctx.fillRect(centerX - badgeWidth / 2, badgeY, badgeWidth, badgeHeight);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `300 ${Math.max(16, Math.floor(width * 0.026))}px Montserrat, Arial, sans-serif`;
+    ctx.letterSpacing = "4px";
+    ctx.fillText((headline.trim() || "Fale comigo").toUpperCase(), centerX, badgeY + badgeHeight / 2);
+
+    const nameText = (name.trim() || "SEU NOME").toUpperCase();
+    const phoneText = phone.trim() || "(XX) 99999-9999";
+
+    ctx.letterSpacing = "2px";
+    ctx.font = `300 ${Math.max(20, Math.floor(width * 0.036))}px Montserrat, Arial, sans-serif`;
+    ctx.fillText(nameText, centerX, badgeY + badgeHeight + height * 0.055);
+
+    ctx.letterSpacing = "0px";
+    ctx.font = `700 ${Math.max(28, Math.floor(width * 0.057))}px Montserrat, Arial, sans-serif`;
+    ctx.fillText(phoneText, centerX, badgeY + badgeHeight + height * 0.112);
+    ctx.restore();
+  }, [headline, name, phone]);
+
+  const startPreviewLoop = useCallback(() => {
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+    }
+
+    const tick = () => {
+      drawFrame();
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    tick();
+  }, [drawFrame]);
+
+  useEffect(() => {
     fetch("/templates.json")
       .then((res) => res.json())
       .then((data) => {
-        if (data.templates && data.templates.length > 0) {
+        if (data.templates?.length) {
           setTemplates(data.templates);
-          setSelectedTemplateIndex((prev) => (prev >= data.templates.length ? 0 : prev));
         } else {
           setTemplates(["composicao-2.mp4"]);
         }
       })
-      .catch((err) => {
-        console.error("Failed to fetch templates:", err);
-        setTemplates(["composicao-2.mp4"]);
-      });
+      .catch(() => setTemplates(["composicao-2.mp4"]));
   }, []);
 
   useEffect(() => {
-    fetchTemplates();
-  }, [fetchTemplates]);
-
-  const currentTemplate = templates[selectedTemplateIndex] || "composicao-2.mp4";
+    drawFrame();
+  }, [drawFrame]);
 
   useEffect(() => {
-    if (!currentTemplate) return;
-    setVideoMeta(null);
-    getVideoMetadata(staticFile(`templates/${currentTemplate}`))
-      .then((meta) => {
-        setVideoMeta(meta);
-        setVideoError(null);
-      })
-      .catch((err) => {
-        console.error("Error loading video metadata:", err);
-        setVideoMeta({ durationInSeconds: 15, fps: 30, width: 720, height: 1280 });
-        setVideoError("Aviso: formato de video nao suportado. Grave o video base em MP4 padrao (Codec H.264).");
-      });
-  }, [currentTemplate]);
+    return () => {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
+  const handleVideoLoaded = async () => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    canvas.width = video.videoWidth || 720;
+    canvas.height = video.videoHeight || 1280;
+    setVideoReady(true);
+    setVideoError(null);
+    drawFrame();
+
+    video.muted = true;
+    video.loop = true;
+    await video.play().catch(() => undefined);
+    startPreviewLoop();
+  };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/\D/g, "");
@@ -71,107 +195,129 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
     setPhone(formatted);
   };
 
-  const handleDownload = async () => {
-    setIsGenerating(true);
-    setRenderProgress(0);
-    const renderId = Math.random().toString(36).substring(7);
-
-    let stuckTime = 0;
-    let lastProgress = 0;
-    let hasStarted = false;
-
-    try {
-      const response = await fetch("/api/render/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, phone, renderId, templateFilename: currentTemplate }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.details || errorData?.error || "Falha ao iniciar renderizacao");
-      }
-
-      const startData = await response.json();
-      const progressInterval = setInterval(async () => {
-        try {
-          const progressParams = new URLSearchParams({ id: renderId });
-          if (startData.awsRenderId) progressParams.set("renderId", startData.awsRenderId);
-          if (startData.bucketName) progressParams.set("bucketName", startData.bucketName);
-
-          const res = await fetch(`/api/render/progress?${progressParams.toString()}`);
-          if (!res.ok) return;
-
-          const data = await res.json();
-          if (data.error) {
-            clearInterval(progressInterval);
-            setIsGenerating(false);
-            setRenderProgress(null);
-            alert("Erro na geracao: " + data.error);
-            return;
-          }
-
-          const currentPercent = Math.floor(data.percent * 100);
-          setRenderProgress(currentPercent);
-
-          if (currentPercent > 5) hasStarted = true;
-
-          if (currentPercent === lastProgress && !data.complete) {
-            stuckTime += 1000;
-          } else {
-            lastProgress = currentPercent;
-            stuckTime = 0;
-          }
-
-          if (!hasStarted && stuckTime > 45000) {
-            clearInterval(progressInterval);
-            setIsGenerating(false);
-            setRenderProgress(null);
-            alert("O servidor demorou muito para iniciar a renderizacao. Tente novamente.");
-          }
-
-          if (hasStarted && stuckTime > 60000) {
-            clearInterval(progressInterval);
-            setIsGenerating(false);
-            setRenderProgress(null);
-            alert("A renderizacao parece ter travado. Tente novamente.");
-          }
-
-          if (data.complete) {
-            clearInterval(progressInterval);
-            const a = document.createElement("a");
-            a.style.display = "none";
-            a.href = data.outUrl || `/api/render/download?id=${renderId}`;
-            a.download = `Campanha_Namorados_${name.replace(/\s+/g, "_")}.mp4`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            setIsGenerating(false);
-            setTimeout(() => setRenderProgress(null), 2000);
-          }
-        } catch {
-          // Keep polling through transient network failures.
-        }
-      }, 1000);
-    } catch (error) {
-      console.error(error);
-      alert("Houve um erro ao gerar o video. Tente novamente.");
-      setIsGenerating(false);
-      setRenderProgress(null);
-    }
+  const getAudioTracks = (video: CaptureVideo) => {
+    const mediaStream = video.captureStream?.() || video.mozCaptureStream?.();
+    return mediaStream?.getAudioTracks() || [];
   };
 
-  const progressLabel =
-    renderProgress === null
-      ? ""
-      : renderProgress < 5
-        ? "Enviando informacoes..."
-        : renderProgress <= 30
-          ? "Gerando video..."
-          : renderProgress <= 80
-            ? "Convertendo video..."
-            : "Preparando download...";
+  const downloadBlob = (blob: Blob, format: "mp4" | "webm") => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeName = (name.trim() || "video").replace(/\s+/g, "-").toLowerCase();
+    link.href = url;
+    link.download = `video-${safeName}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = async () => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current as CaptureVideo | null;
+    if (!canvas || !video || !videoReady) return;
+
+    if (!("MediaRecorder" in window) || !canvas.captureStream) {
+      alert("Este navegador nao suporta gravacao local de video.");
+      return;
+    }
+
+    const mp4MimeType = pickMp4MimeType();
+    const webmMimeType = pickWebmMimeType();
+    const format = mp4MimeType ? "mp4" : "webm";
+    const mimeType = mp4MimeType || webmMimeType;
+
+    if (!mimeType) {
+      alert("Este navegador nao suporta exportacao local de video.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setRenderProgress(0);
+    setExportFormat(format);
+    setVideoError(null);
+
+    const previousMuted = video.muted;
+    const previousLoop = video.loop;
+    const previousVolume = video.volume;
+
+    try {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+
+      video.pause();
+      video.loop = false;
+      video.muted = false;
+      video.volume = 0;
+      video.currentTime = 0;
+
+      await new Promise<void>((resolve) => {
+        const onSeeked = () => {
+          video.removeEventListener("seeked", onSeeked);
+          resolve();
+        };
+        video.addEventListener("seeked", onSeeked);
+      });
+
+      const canvasStream = canvas.captureStream(FPS);
+      const stream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...getAudioTracks(video),
+      ]);
+
+      const chunks: Blob[] = [];
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+
+      const recordDone = new Promise<Blob>((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onerror = () => reject(new Error("Falha ao gravar o video localmente."));
+        recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+      });
+
+      const drawWhileRecording = () => {
+        drawFrame();
+        const duration = video.duration || 1;
+        setRenderProgress(clamp(Math.round((video.currentTime / duration) * 100), 0, 100));
+
+        if (!video.ended && !video.paused) {
+          animationRef.current = requestAnimationFrame(drawWhileRecording);
+        }
+      };
+
+      video.onended = () => {
+        drawFrame();
+        setRenderProgress(100);
+        if (recorder.state !== "inactive") recorder.stop();
+      };
+
+      recorder.start(250);
+      await video.play();
+      drawWhileRecording();
+
+      const blob = await recordDone;
+      stream.getTracks().forEach((track) => track.stop());
+      downloadBlob(blob, format);
+    } catch (error) {
+      console.error(error);
+      alert("Houve um erro ao exportar o video localmente. Tente novamente.");
+    } finally {
+      video.onended = null;
+      video.pause();
+      video.loop = previousLoop;
+      video.muted = previousMuted;
+      video.volume = previousVolume;
+      video.currentTime = 0;
+      await video.play().catch(() => undefined);
+      startPreviewLoop();
+      setIsGenerating(false);
+      setExportFormat(null);
+      setTimeout(() => setRenderProgress(null), 1200);
+    }
+  };
 
   return (
     <div className="video-layout">
@@ -184,7 +330,7 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
           </button>
         </div>
         <div className="gallery-header-info">
-          <span className="gallery-count">Gerador de Video</span>
+          <span className="gallery-count">Gerador local de video</span>
         </div>
       </header>
 
@@ -205,7 +351,7 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
               <button
                 className="nav-arrow video-template-arrow"
                 onClick={() => setSelectedTemplateIndex((prev) => (prev > 0 ? prev - 1 : templates.length - 1))}
-                disabled={templates.length <= 1}
+                disabled={templates.length <= 1 || isGenerating}
                 aria-label="Modelo anterior"
               >
                 <ChevronLeft size={18} strokeWidth={1.5} />
@@ -216,7 +362,7 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
               <button
                 className="nav-arrow video-template-arrow"
                 onClick={() => setSelectedTemplateIndex((prev) => (prev < templates.length - 1 ? prev + 1 : 0))}
-                disabled={templates.length <= 1}
+                disabled={templates.length <= 1 || isGenerating}
                 aria-label="Proximo modelo"
               >
                 <ChevronRight size={18} strokeWidth={1.5} />
@@ -227,6 +373,22 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
           <div className="block-divider" />
 
           <div className="fields-group">
+            <div className="field-wrapper">
+              <label className="field-label" htmlFor="video-headline">
+                <Type size={9} strokeWidth={2} />
+                Frase principal
+              </label>
+              <input
+                id="video-headline"
+                className="field-input"
+                type="text"
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value.slice(0, 32))}
+                placeholder="Ex: Fale comigo"
+                autoComplete="off"
+              />
+            </div>
+
             <div className="field-wrapper">
               <label className="field-label" htmlFor="video-name">
                 <User size={9} strokeWidth={2} />
@@ -266,21 +428,25 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
             <button
               className="download-btn"
               onClick={handleDownload}
-              disabled={isGenerating || !name.trim() || !phone.trim()}
+              disabled={isGenerating || !name.trim() || !phone.trim() || !videoReady}
             >
               {isGenerating ? (
                 <>
                   <Loader2 size={15} strokeWidth={2} className="spin-icon" />
-                  Gerando... {renderProgress !== null ? `${renderProgress}%` : ""}
+                  Exportando... {renderProgress !== null ? `${renderProgress}%` : ""}
                 </>
               ) : (
                 <>
                   <Download size={15} strokeWidth={2} />
-                  Gerar Video
+                  Baixar Video
                 </>
               )}
             </button>
-            <span className="export-hint">{isGenerating ? progressLabel : "MP4 personalizado para redes sociais"}</span>
+            <span className="export-hint">
+              {isGenerating
+                ? `Gerando ${exportFormat?.toUpperCase() || "video"} no seu navegador`
+                : "Tenta MP4 primeiro; se nao suportar, baixa WebM"}
+            </span>
             {renderProgress !== null && (
               <div className="video-progress-track">
                 <div className="video-progress-bar" style={{ width: `${renderProgress}%` }} />
@@ -295,27 +461,25 @@ export default function VideoGenerator({ onBack }: VideoGeneratorProps) {
 
           <div className="video-player-shell">
             {videoError && <div className="video-warning">{videoError}</div>}
-
-            {!videoMeta ? (
+            {!videoReady && !videoError && (
               <div className="video-loading">
                 <Loader2 size={28} strokeWidth={1.5} className="spin-icon" />
                 <span>Carregando video...</span>
               </div>
-            ) : (
-              <Player
-                key={currentTemplate}
-                acknowledgeRemotionLicense
-                component={CampaignVideo}
-                durationInFrames={Math.floor((videoMeta?.durationInSeconds || 15) * 30)}
-                fps={30}
-                compositionWidth={videoMeta?.width || 1080}
-                compositionHeight={videoMeta?.height || 1920}
-                style={{ width: "100%", height: "100%" }}
-                controls
-                allowFullscreen={false}
-                inputProps={{ name: "SEU NOME AQUI", phone: "(XX) XXXXX-XXXX", templateFilename: currentTemplate }}
-              />
             )}
+            <canvas ref={canvasRef} className="video-canvas" width={720} height={1280} />
+            <video
+              ref={videoRef}
+              src={currentVideoUrl}
+              className="video-source"
+              playsInline
+              crossOrigin="anonymous"
+              onLoadedData={handleVideoLoaded}
+              onError={() => {
+                setVideoReady(false);
+                setVideoError("Nao foi possivel carregar este modelo de video.");
+              }}
+            />
           </div>
 
           <div className="canvas-footer">
