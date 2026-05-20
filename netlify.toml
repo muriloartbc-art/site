@@ -3,8 +3,12 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  NODE_VERSION = "20"
+
 [functions]
   node_bundler = "esbuild"
+  external_node_modules = ["@remotion/lambda", "@remotion/lambda-client"]
   included_files = ["public/templates/**", "dist/templates/**"]
 
 [[redirects]]

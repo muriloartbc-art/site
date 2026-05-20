@@ -2,7 +2,10 @@ import express from "express";
 import "dotenv/config";
 import path from "path";
 import fs from "fs";
-import { renderMediaOnLambda, getRenderProgress } from "@remotion/lambda/client";
+import { createRequire } from "node:module";
+
+const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
+const { renderMediaOnLambda, getRenderProgress } = nodeRequire("@remotion/lambda/client") as typeof import("@remotion/lambda/client");
 
 if (!process.env.AWS_ACCESS_KEY_ID && process.env.REMOTION_AWS_ACCESS_KEY_ID) {
   process.env.AWS_ACCESS_KEY_ID = process.env.REMOTION_AWS_ACCESS_KEY_ID;
